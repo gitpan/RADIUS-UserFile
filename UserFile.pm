@@ -43,7 +43,8 @@ a RADIUS users text file.
 
 =item new RADIUS::UserFile
 
-=item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => I<$USER>)
+=item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => I<$USER>,
+      Check_Items => [ I<@CHECK_ITEMS> ])
 
 =item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => [ I<@USERS> ],
       Check_Items => [ I<@CHECK_ITEMS> ])
@@ -217,7 +218,7 @@ require Exporter;
 @EXPORT_OK = qw(add attributes comment dump files format load new read_users
                 update user usernames users values);
 
-$VERSION = '1.00';
+$VERSION = '1.01';
 
 #my $RADIUS_USERS = '/etc/raddb/users';  # default users info file
 my $ATTR_MAX = 31;                      # max char len of any attribute name

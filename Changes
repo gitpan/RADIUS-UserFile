@@ -24,3 +24,10 @@ Revision history for Perl extension RADIUS::Users.
      longer work correctly because $/ was making each record be read in
      as a single line, and then it would get skipped as if it were a
      comment.  Whoops!
+   - Added Check_Items field for new() so that the list of checkable
+     attributes can be customized.
+
+1.01 Thu Dec 13 18:50:56 PST 2001
+   - Updated the README to be more current.  Looks like I never took a
+     look at it after I first created it.
+   - Updated my contact address to oevans@cpan.org.
