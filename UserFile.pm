@@ -9,7 +9,10 @@ RADIUS::UserFile - Perl extension for manipulating a RADIUS users file.
 
   use RADIUS::UserFile;
 
-  my $users = new RADIUS::UserFile File => '/etc/raddb/users';
+  my $users = new RADIUS::UserFile 
+                  File => '/etc/raddb/users',
+                  Check_Items => [ qw(Password Calling-Station-Id) ];
+
   $users->load('/usr/local/etc/radius/users');
   
   $users->add(Who        => 'joeuser',
@@ -31,8 +34,8 @@ Nothing
 
 =head1 DESCRIPTION
 
-This module provides methods for reading information from a RADIUS
-users database.
+This module provides methods for reading information from and modifying
+a RADIUS users text file.
 
 =head2 PACKAGE METHODS
 
@@ -42,7 +45,8 @@ users database.
 
 =item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => I<$USER>)
 
-=item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => I<\@USERS>)
+=item new RADIUS::UserFile(File => I<$USERS_FILE>, Who => [ I<@USERS> ],
+      Check_Items => [ I<@CHECK_ITEMS> ])
 
 Creates and returns a new C<RADIUS::UserFile> object.
 
@@ -56,20 +60,26 @@ specified.  A single user can be named using a string, or a set of users
 can be passed as a reference to an array.  If Who is left undefined, all
 users will be loaded.
 
+C<Check_Items> is a reference to a list of attributes that should be
+included in the first line of the record.  By default, this list includes:
+"Password", "Auth-Type", "Called-Station-Id", "Calling-Station-Id",
+"Client-Port-DNIS", and "Expiration".
+
 =back
 
 =head2 OBJECT METHODS
 
 =over 4
 
-=item ->add(Who => I<$USER>, Attributes => I<\%ATTRS>, Comment => I<$TEXT>)
+=item ->add(Who => I<$USER>, Attributes => I<\%ATTRS>, Comment => I<$TEXT>, Debug => I<level>)
 
 Adds information about the named user.  This information will henceforth
 be available through C<users>, C<attributes>, C<comment>, etc.  Any
 comments are automatically prefixed with "# ".  C<Attributes> should be
 specified as a reference to a hash; each value should either be an array
 ref or a string.  On success, 1 is returned.  On error, 0 is returned
-and STDERR gets an appropriate message.
+and STDERR gets an appropriate message.  The debug level is used by the
+C<debug> function described below.
 
 =item ->attributes(I<$USER>)
 
@@ -81,6 +91,11 @@ user doesn't exist, undef is returned.
 Returns a string representing the comments that would prefix the given
 user's entry in the users file.  If the user doesn't exist, undef is
 returned.
+
+=item ->debug(I<level>, I<@messages>)
+
+Prints out the list of strings in I<@messages> if the debug level is >=
+I<level>.
 
 =item ->dump(I<$USER>)
 
@@ -117,7 +132,7 @@ appropriate message is sent to STDERR.
 =item ->read_users(I<$USERS_FILE>, I<\@USERS>)
 
 Reads in the contents of the specified RADIUS users file, and returns
-a pair of hashes:  one index by user name, with each element containing
+a pair of hashes:  one indexed by user name, with each element containing
 a hash of (attribute name => [ values ]) pairs; and another also indexed
 by user name, containing the comments that immediately preceded that
 user's file entry.  The options are the same as in C<new()>.  Each
@@ -175,9 +190,12 @@ undef is returned.
 
 =head1 AUTHOR
 
-Copyright (c) 2000 O'Shaughnessy Evans <oevans@acm.org>.
+Copyright (c) 2001 O'Shaughnessy Evans <oevans@cpan.org>.
 All rights reserved.  This version is distributed under the same
 terms as Perl itself (i.e. it's free), so enjoy.
+
+Thanks to Burkhard Weeber, James Golovich, Peter Bannis, and others
+for contributions and comments that have improved this software.
 
 =head1 SEE ALSO
 
@@ -199,18 +217,19 @@ require Exporter;
 @EXPORT_OK = qw(add attributes comment dump files format load new read_users
                 update user usernames users values);
 
-$VERSION = '0.99';
+$VERSION = '1.00';
 
 #my $RADIUS_USERS = '/etc/raddb/users';  # default users info file
 my $ATTR_MAX = 31;                      # max char len of any attribute name
 
 my %fields = (
-    users    => undef,
-    removed  => undef,              # cheap hack for remove()
-    files    => undef,
-    comments => undef,
-    ERROR    => undef,
-    DEBUG    => undef
+    users       => undef,
+    removed     => undef,              # cheap hack for remove()
+    files       => undef,
+    comments    => undef,
+    check_items => undef,
+    ERROR       => undef,
+    DEBUG       => undef
 );
 
 # Create, initialize, and return a new RADIUS::UserFile object.
@@ -223,10 +242,6 @@ sub new
     bless $self, $class;
 
     my %args = @_;
-    if (exists $args{'debug'} and $args{'debug'} != 0) {
-        $self->set_debug;
-    }
-
     return $self->_initialize(\%args);
 }
 
@@ -237,12 +252,27 @@ sub _initialize
 {
     my ($self, $args) = @_;
 
+    if ($args->{Debug}) {
+        $self->{DEBUG} = $args->{Debug};
+        $| = 1;
+    }
+
+    if ($args->{Check_Items}) {
+        $self->{check_items} = [ @{$args->{Check_Items}} ];
+    }
+    else {
+	    $self->{check_items} = [ "Password", "Auth-Type",
+	                             "Called-Station-Id", "Calling-Station-Id",
+                                 "Client-Port-DNIS", "Expiration" ];
+    }
+
     if ($args->{File}) {
+        $self->debug(7, "init - loading $args->{File}");
         my ($users, $comments) = $self->read_users($args->{File}, $args->{Who});
         return 0 unless defined $comments and defined $users;
 
         if ($users) {
-            @{$self->{'users'}}{keys %$users} = values %$users;
+            @{$self->{users}}{keys %$users} = values %$users;
             @{$self->{comments}}{keys %$comments} = values %$comments;
             push @{$self->{files}}, $args->{File};
         }
@@ -267,6 +297,7 @@ sub add
         carp('Insufficient parameters:  missing Who or hash of Attributes.');
         return 0;
     }
+    $self->debug(6, "add - adding $args{Who}");
 
     # Add quotes to each attrib value if it has whitespace and isn't already
     # quoted.
@@ -291,8 +322,10 @@ sub add
                : $args{Attributes}->{$k}
     }
 
-    $args{Comment} =~ s/^/# /mg;
-    $self->{comments}{$args{Who}} .= $args{Comment}. "\n";
+    if (exists $args{Comment}) {
+        $args{Comment} =~ s/^/# /mg;
+        $self->{comments}{$args{Who}} .= $args{Comment}. "\n";
+    }
 
     return 1;
 }
@@ -365,23 +398,28 @@ sub format
     my $str = $self->comment($who);
 
     my @attribs = $self->attributes($who);
+
+    # figure out a good way to indent each record
+    my $indent = length($who) + 1;
+    if ($indent < 24) { $indent = 24 }
+
     if (@attribs) {
-        my @attrib_strs;
+        my (@attrib_strs);
+        my @checks = ();
 
         foreach my $a (@attribs) {
             foreach my $v ($self->values($who, $a)) {
-                if ($a eq "Password") {
-                    unshift @attrib_strs,
-                     sprintf("                     %s = %s", $a, $v);
+                if ($self->_is_check_item($a)) {
+                    $self->debug(8, "format - check item $a = $v");
+                    push @checks, "$a = $v";
                 }
                 else {
                     push @attrib_strs,
-                     sprintf("                     %s = %s", $a, $v);
+                     sprintf("%s%s = %s", ' 'x$indent, $a, $v);
                 }
             }
         }
-        $attrib_strs[0] =~ s/^\s+/sprintf("%-21s", $who)/e;
-        $str .= (shift @attrib_strs). "\n";
+        $str .= $who. (' 'x($indent - length $who)). join(', ', @checks). "\n";
         $str .= join(",\n", @attrib_strs). "\n";
     }
 
@@ -432,13 +470,16 @@ sub read_users
         %comments, $comment, $attr, $val);
     local (*USERS);
 
+    $self->debug(2, "read_users - loading $users_file");
     open(USERS, $users_file)
      or carp("Error opening $users_file: $!"), return 0;
+    seek USERS, 0, 0;
 
     @who_we_want = ref $who eq 'ARRAY' ? @$who : $who  if defined $who;
 
     while (<USERS>) {
         chomp;
+        $self->debug(9, "read_users - in=``$_''");
         ($comment = '', next) unless $_;    # Skip if there's nothing useful,
         ($comment .= "$_\n", next) if /^#/; # or if it's just a comment.
 
@@ -447,6 +488,7 @@ sub read_users
             $attrib_input = $2;
             $comments{$user} = $comment if $comment;
             tie(%{$users{$user}}, 'Tie::IxHash');
+            $self->debug(5, "read_users - new record $user");
         }
         else {                                              # secondary line
             $attrib_input = $_;
@@ -527,7 +569,8 @@ sub update
                : eval { local $^W = undef; keys %{$self->{users}} };
     my $temp = "$file.new";
     local (*IN, *TMP);
-    local ($/ = '');        # we'll lose multiple blank lines this way
+    my $oldsep = $/;
+    local ($/) = '';        # we'll lose multiple blank lines this way
 
     carp('No users found'), return 0 unless (@who);
     _setup_files($file, \*IN, $temp, \*TMP) or return 0;
@@ -558,6 +601,7 @@ sub update
                 print TMP $r;
             }
             elsif (exists $who{$name}) {
+                $self->debug(6, "update - existing record $name");
                 print TMP $self->format($name) if $who{$name} == 0;
                 $who{$name}++;
             }
@@ -570,10 +614,13 @@ sub update
 
     # Print out records for anyone we didn't find in $file.
     foreach (grep($who{$_} == 0, keys %who)) {
+        $self->debug(6, "update - new record $_");
         print TMP $self->format($_), "\n";
     }
 
-    # Close out input and output files (original and temporary, respecively)
+    $/ = $oldsep;
+
+    # Close out input and output files (original and temporary, respectively)
     _cleanup_files($file, \*IN, $temp, \*TMP) or return 0;
 
     return 1;
@@ -630,6 +677,20 @@ sub _cleanup_files
 }
 
 
+# See if attribute is a checkable item (Lucent Radius fix -- Peter Bannis)
+sub _is_check_item
+{
+    my ($self, $attribute) = @_;
+
+    if ($attribute) {
+        return grep(/^$attribute$/i, @{$self->{check_items}});
+    }
+    else {
+        return 0;
+    }
+}
+
+
 # Return a ref to a hash representing the attributes of the specified user.
 #
 sub user
@@ -670,7 +731,15 @@ sub values
     return $@ ? undef : @vals;
 }
 
+sub debug
+{
+    my ($self, $level, @msg) = @_;
+    if ($level <= $self->{DEBUG}) {
+        print STDERR join("\n", @msg), "\n";
+    }
+}
+
 
 1;
-__END__
 
+__END__

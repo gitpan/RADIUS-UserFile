@@ -25,14 +25,17 @@ my $NUM_JOES_ATTRIBS = 8;                       # how many attribs joeuser has
 
 my $RU;                                         # RADIUS::UserFile object
 
+# simple test:  can we create a new object?
 $t = 2;
-eval { $RU = new RADIUS::UserFile; } or print 'not ';
+eval { $RU = new RADIUS::UserFile(Debug => 0); } or print 'not ';
 print "ok $t { new }\n";
 
+# make sure there aren't any files loaded yet.  that'd be weird.
 $t++;
 scalar @{$RU->files} == 0 or print('[', @{$RU->files}, '] not ');
 print "ok $t { files }\n";
 
+# no users yet, either.
 $t++;
 $RU->users == undef or print 'not ';
 print "ok $t { users }\n";
@@ -50,19 +53,21 @@ $RU->values('joeuser', 'attributename') == undef or print 'not ';
 print "ok $t { value }\n";
 
 # Load the users file now, and do some (slightly) more significant testing.
-#
 $t++;
 eval { $RU->load(File => $USERS_FILE); } or print 'not ';
 print "ok $t { load }\n";
 
+# does the object think it loaded the file we told it to?
 $t++;
 eval { join('', $RU->files) eq $USERS_FILE } or print 'not ';
 print "ok $t { files }\n";
 
+# did it load the right number of users?
 $t++;
 eval { scalar keys %{$RU->users} == $NUM_USERS } or print 'not ';
 print "ok $t { users }\n";
 
+# check the quality of the data it loaded...
 $t++;
 eval { scalar @{$RU->usernames} == $NUM_USERS } or print 'not ';
 print "ok $t { usernames #1 }\n";
@@ -102,3 +107,42 @@ print "ok $t { empty subclass }\n";
 #              $RU->attributes($who)),
 #          "\n";
 #}
+
+# now try adding a new user
+$t++;
+eval {
+    $RU->add(Who        => 'areallylonguser@somedomain',
+             Attributes => { 'Auth-Type' => 'unix', Password => '"jabberwocky"',
+                             junkkey1 => 'val1', junkkey2 => 'val2' },
+             Comment    => 'meep meep!')
+     or die("test $t: couldn't add areallylonguser\@somedomain\n");
+    $RU->update() or die("test $t: couldn't update $USERS_FILE\n".
+                         "files are ".$RU->files."\n");
+} or print 'not ';
+print "ok $t { add }\n";
+print $@ if $@;
+
+# check removal of a user from the object
+$t++;
+eval { join('', $RU->remove('areallylonguser@somedomain'))
+        eq 'areallylonguser@somedomain'
+        or die("removing areallylonguser\@somedomain failed\n");
+       join(' ', sort @{$RU->usernames}) eq join(' ', sort @USERS)
+        or die("testing remove(areallylonguser\@somedomain) failed\n");
+	} or print 'not ';
+print "ok $t { remove }\n";
+print $@ if $@;
+
+# now verify the contents of the file again
+$t++;
+my $RU2;
+eval {
+    $RU2 = RADIUS::UserFile->new(File => $USERS_FILE, Debug => 0)
+     or die("test $t: couldn't reload $USERS_FILE\n");
+    join(' ', sort @{$RU2->usernames})
+     eq join(' ', sort (@USERS, 'areallylonguser@somedomain'))
+     or die("test $t: just added a user and can't find it now\n".
+            'only have: '. join(' ', @{$RU2->usernames}). "\n");
+} or print 'not ';
+print "ok $t { verify add }\n";
+print $@ if $@;
