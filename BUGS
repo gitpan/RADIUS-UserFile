@@ -1,0 +1,6 @@
+Tue Sep 29 16:14:22 PDT 1998
+This module can't seem to handle user entries named with domains,
+like "DEFAULT@callamerica.net".  The name becomes part of the
+first tag/value pair, which is on that same line of the record.
+It's probably just a printf() or write() problem, but I haven't
+looked into it yet.

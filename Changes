@@ -1,0 +1,7 @@
+Revision history for Perl extension RADIUS::Users.
+
+0.01  Tue Jan 13 11:07:55 1998
+	- original version; created by h2xs 1.18
+
+0.90  Thu Jan 15 17:36:14 PST 1998
+    - first public release
