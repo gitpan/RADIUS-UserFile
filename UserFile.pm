@@ -14,7 +14,7 @@ RADIUS::UserFile - Perl extension for manipulating a RADIUS users file.
   
   $users->add(Who        => 'joeuser',
               Attributes => { key1 => 'val1', key2 => 'val2' },
-              Comments   => 'Created on '. scalar localtime);
+              Comment    => 'Created on '. scalar localtime);
     
   $users->update(File => '/etc/raddb/users',
                  Who => qw(joeuser janeuser));
@@ -175,7 +175,7 @@ undef is returned.
 
 =head1 AUTHOR
 
-Copyright (c) 1998 O'Shaughnessy Evans <shaug@callamerica.net>.
+Copyright (c) 2000 O'Shaughnessy Evans <oevans@acm.org>.
 All rights reserved.  This version is distributed under the same
 terms as Perl itself (i.e. it's free), so enjoy.
 
@@ -199,7 +199,7 @@ require Exporter;
 @EXPORT_OK = qw(add attributes comment dump files format load new read_users
                 update user usernames users values);
 
-$VERSION = '0.98';
+$VERSION = '0.99';
 
 #my $RADIUS_USERS = '/etc/raddb/users';  # default users info file
 my $ATTR_MAX = 31;                      # max char len of any attribute name
@@ -329,7 +329,7 @@ sub dump
 
     print "RADIUS user $who:\n";
 
-    if (defined @attribs) {
+    if (@attribs) {
         foreach my $a (@attribs) {
             foreach my $v ($self->values($who, $a)) {
                 printf "  %-${ATTR_MAX}s => %s\n", $a, $v;
@@ -365,15 +365,22 @@ sub format
     my $str = $self->comment($who);
 
     my @attribs = $self->attributes($who);
-    if (defined @attribs) {
+    if (@attribs) {
         my @attrib_strs;
 
         foreach my $a (@attribs) {
             foreach my $v ($self->values($who, $a)) {
-                push @attrib_strs, sprintf("           %s = %s", $a, $v);
+                if ($a eq "Password") {
+                    unshift @attrib_strs,
+                     sprintf("                     %s = %s", $a, $v);
+                }
+                else {
+                    push @attrib_strs,
+                     sprintf("                     %s = %s", $a, $v);
+                }
             }
         }
-        $attrib_strs[0] =~ s/^\s+/sprintf("%-11s", $who)/e;
+        $attrib_strs[0] =~ s/^\s+/sprintf("%-21s", $who)/e;
         $str .= (shift @attrib_strs). "\n";
         $str .= join(",\n", @attrib_strs). "\n";
     }
@@ -445,7 +452,7 @@ sub read_users
             $attrib_input = $_;
         }
 
-        next if defined @who_we_want and !grep($_ eq $user, @who_we_want);
+        next if @who_we_want and !grep($_ eq $user, @who_we_want);
 
         $attrib_set = _parse_attribs($attrib_input, $users_file);
         while (($attr, $val) = splice @$attrib_set, 0, 2) {
@@ -543,7 +550,7 @@ sub update
             push @recs, $1;
         }
 
-        print(TMP $in), next unless defined @recs;
+        print(TMP $in), next unless @recs;
         foreach my $r (@recs) {
             ($name) = $r =~ /^([^#\s]+)/m;
 
